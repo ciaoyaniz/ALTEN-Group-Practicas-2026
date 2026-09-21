@@ -1,4 +1,4 @@
-## Paso 1: crear las dos VMs
+## crear las dos VMs
 
 Cada VM contiene:
 - VM 1 (Docker + app)
@@ -12,49 +12,16 @@ Instalación de las dos VMs:
 
 ![Instalación de Ubuntu corriendo en ambas VMs en paralelo](./capturas/02-instalacion-ubuntu-ambas-vms.png)
 
+![](capturas/Pasted%20image%2020260921150418.png)
 
-PROBLEMA: la intalación se estaba demorando muchisimo y decidi hacerlo con BOXES de VAGRANT,
+## Actualización del sistema:
 
-```Vagrantfile
-Vagrant.configure("2") do |config|
-
-  config.vm.define "docker-app" do |app|
-    app.vm.box = "ubuntu/focal64"         
-    app.vm.hostname = "vm-docker-app"
-
-    app.vm.network "public_network"
-
-    app.vm.provider "virtualbox" do |vb|
-      vb.name = "vm-docker-app"
-      vb.memory = 2048
-      vb.cpus = 2
-    end
-  end
-
-  config.vm.define "postgres" do |db|
-    db.vm.box = "ubuntu/focal64"           
-    db.vm.hostname = "vm-postgres"
-
-    db.vm.network "public_network"
-
-    db.vm.provider "virtualbox" do |vb|
-      vb.name = "vm-postgres"
-      vb.memory = 2048
-      vb.cpus = 2
-    end
-    
-end
-```
----
-
-Actualización del sistema:
+al principio lo estaba haciendo con BOXES de Vagrant pero tuve errores al instalar PostgreSQL asique repetí esos pasos con VM reinstaladas con la ISO oficial de Ubuntu 24.
 
 ![Actualización del sistema en vm-docker-app (apt update && apt upgrade)](./capturas/03-actualizacion-sistema-docker-app.png)
 ![Actualización del sistema en vm-postgres (apt update && apt upgrade)](./capturas/04-actualizacion-sistema-postgres.png)
 
----
-
-creación de users:
+## creación de users:
 
 vagrant ya viene con un user por defecto llamado vagrant pero a terminos practicos voy a crear otro nuevo
 
@@ -72,8 +39,16 @@ sigo trabajando con mi user
 
 ![Trabajando con el nuevo usuario](./capturas/08-trabajando-con-mi-user.png)
 
-----
+## Configurar POSTGRES v18:
 
+instalación del repo oficial version 18
 
-## Configurar POSTGRES:
+```bash
+sudo apt install -y curl ca-certificates gnupg lsb-release
+sudo install -d /usr/share/postgresql-common/pgdg
+sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+sudo apt update
+sudo apt install -y postgresql-18
+```
 
