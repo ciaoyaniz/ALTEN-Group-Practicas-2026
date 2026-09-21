@@ -54,15 +54,14 @@ Actualización del sistema:
 
 ---
 
-creacion de users:
+creación de users:
 
 vagrant ya viene con un user por defecto llamado vagrant pero a terminos practicos voy a crear otro nuevo
 
-![[Pasted image 20260921133833.png]]
+![Creación del usuario de trabajo en vm-docker-app](./capturas/05-creacion-usuario-docker-app.png)
 
 en ambas vms he creado mi user
 
-![[Pasted image 20260921133903.png]]
+![Creación del usuario de trabajo en vm-postgres](./capturas/06-creacion-usuario-postgres.png)
 
 ----
-
