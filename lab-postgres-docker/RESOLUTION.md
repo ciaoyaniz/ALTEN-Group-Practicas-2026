@@ -12,8 +12,6 @@ Instalación de las dos VMs:
 
 ![Instalación de Ubuntu corriendo en ambas VMs en paralelo](./capturas/02-instalacion-ubuntu-ambas-vms.png)
 
-![](capturas/Pasted%20image%2020260921150418.png)
-
 ## Actualización del sistema:
 
 al principio lo estaba haciendo con BOXES de Vagrant pero tuve errores al instalar PostgreSQL asique repetí esos pasos con VM reinstaladas con la ISO oficial de Ubuntu 24.
