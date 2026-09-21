@@ -53,7 +53,6 @@ chmod +x install-docker.sh
 ```bash
 #!/bin/bash
 
-# Script para limpiar configuración anterior y instalar Docker correctamente
 set -e
 
 echo "========================================"
@@ -136,6 +135,7 @@ echo "Luego reconéctate y prueba: docker run hello-world"
 
 El proceso de instalación ha sido un poco lento pero el script ha funcionado correctamente:
 
+![](capturas/Pasted%20image%2020260922001758.png)
 
 ## PASO 3: Configurar VM con PostgreSQL
 
