@@ -11,3 +11,58 @@ Cada VM contiene:
 Instalación de las dos VMs:
 
 ![Instalación de Ubuntu corriendo en ambas VMs en paralelo](./capturas/02-instalacion-ubuntu-ambas-vms.png)
+
+
+PROBLEMA: la intalación se estaba demorando muchisimo y decidi hacerlo con BOXES de VAGRANT,
+
+```Vagrantfile
+Vagrant.configure("2") do |config|
+
+  config.vm.define "docker-app" do |app|
+    app.vm.box = "ubuntu/focal64"         
+    app.vm.hostname = "vm-docker-app"
+
+    app.vm.network "public_network"
+
+    app.vm.provider "virtualbox" do |vb|
+      vb.name = "vm-docker-app"
+      vb.memory = 2048
+      vb.cpus = 2
+    end
+  end
+
+  config.vm.define "postgres" do |db|
+    db.vm.box = "ubuntu/focal64"           
+    db.vm.hostname = "vm-postgres"
+
+    db.vm.network "public_network"
+
+    db.vm.provider "virtualbox" do |vb|
+      vb.name = "vm-postgres"
+      vb.memory = 2048
+      vb.cpus = 2
+    end
+    
+end
+```
+---
+
+Actualización del sistema:
+
+![Actualización del sistema en vm-docker-app (apt update && apt upgrade)](./capturas/03-actualizacion-sistema-docker-app.png)
+![Actualización del sistema en vm-postgres (apt update && apt upgrade)](./capturas/04-actualizacion-sistema-postgres.png)
+
+---
+
+creacion de users:
+
+vagrant ya viene con un user por defecto llamado vagrant pero a terminos practicos voy a crear otro nuevo
+
+![[Pasted image 20260921133833.png]]
+
+en ambas vms he creado mi user
+
+![[Pasted image 20260921133903.png]]
+
+----
+

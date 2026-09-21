@@ -1,6 +1,14 @@
-node_modules/
-.env
-npm-debug.log
-*.log
-.DS_Store
-Thumbs.db
+# Este repo sube SOLO documentacion: archivos .md y las capturas.
+# Todo lo demas (codigo, Vagrantfile, Dockerfile, .env, etc.) queda afuera.
+
+# Ignorar todo por defecto
+*
+
+# Permitir que git recorra todas las carpetas (si no, no ve lo que hay adentro)
+!*/
+
+# Permitir los archivos .md, en cualquier carpeta
+!*.md
+
+# Permitir todo el contenido de cualquier carpeta llamada "capturas"
+!capturas/**
