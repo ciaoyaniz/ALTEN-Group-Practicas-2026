@@ -64,4 +64,16 @@ en ambas vms he creado mi user
 
 ![Creación del usuario de trabajo en vm-postgres](./capturas/06-creacion-usuario-postgres.png)
 
+agrego en ambas vms mi user para que pueda acceder con sudo
+
+![Usuario agregado al grupo sudo en ambas VMs](./capturas/07-agregar-sudo-ambas-vms.png)
+
+sigo trabajando con mi user
+
+![Trabajando con el nuevo usuario](./capturas/08-trabajando-con-mi-user.png)
+
 ----
+
+
+## Configurar POSTGRES:
+

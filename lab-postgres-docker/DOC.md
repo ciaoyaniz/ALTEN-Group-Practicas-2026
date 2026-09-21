@@ -16,7 +16,7 @@ Tareas
 2. Docker
 - Instalar Docker
 - Agregar su usuario al grupo "docker" (para no usar sudo)
-sudo usermod -aG docker $USER
+**sudo usermod -aG docker $USER**
 Otro tip...no se olviden de crear el grupo docker.
 - Validar ejecución:
 docker run hello-world
