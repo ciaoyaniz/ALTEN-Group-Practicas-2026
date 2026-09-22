@@ -5,7 +5,7 @@
 ### Instalar Ubuntu 24 y preparar el entorno
 
 > [!WARNING] Cambio de entorno
-> Al comienzo de este laboratorio cree VMs con Vagrant y boxes `bento/ubuntu-24.04`, pero, debido a problemas de compatibilidad al instalar PostgreSQL, decidí rehacer las VMs con sus ISO oficiales de Ubuntu 24.x.
+> Al comienzo de este laboratorio cree VMs con Vagrant y boxes `bento/ubuntu-24.04`, pero, debido a problemas de compatibilidad al instalar PostgreSQL v-18, decidí rehacer las VMs con sus ISO oficiales de Ubuntu 24.x.
 
 ![](capturas/Pasted%20image%2020260921234441.png)
 
@@ -17,10 +17,6 @@ Además he habilitado los servicios SSH para poder conectarme de forma remota a 
 
 ### Actualización del sistema
 
-![](capturas/Pasted%20image%2020260921223035.png)
-
-![](capturas/Pasted%20image%2020260921223051.png)
-
 Inicié sesión desde mi host anfitrión mediante el servicio SSH con el comando `ssh ciaoyaniz@192.168.1.x`. Previamente obtuve la IP asignada a cada VM con el comando `ip a`. 
 
 Una vez dentro de cada sistema, los actualicé:
@@ -29,11 +25,15 @@ sudo apt update && sudo apt upgrade -y
 sudo reboot
 ```
 
+![](capturas/Pasted%20image%2020260921223035.png)
+
+![](capturas/Pasted%20image%2020260921223051.png)
+
 ### Asignar permisos `sudo` a mi usuario
 
-![](capturas/Pasted%20image%2020260921224242.png)
-
 `usermod -aG sudo` agrega mi usuario al grupo `sudo`, habilitándome a ejecutar comandos administrativos con `sudo` sin ser `root`.
+
+![](capturas/Pasted%20image%2020260921224242.png)
 
 El proceso lo he repetido en las dos VM.
 
@@ -135,9 +135,55 @@ echo "Luego reconéctate y prueba: docker run hello-world"
 
 El proceso de instalación ha sido un poco lento pero el script ha funcionado correctamente:
 
+![](capturas/Pasted%20image%2020260922124241.png)
+
+Levanté un contenedor de prueba para verificar:
+
 ![](capturas/Pasted%20image%2020260922001758.png)
 
 ## PASO 3: Configurar VM con PostgreSQL
 
 ### Instalar PostgreSQL sobre Ubuntu
 
+Primero agregué el repositorio oficial de PostgreSQL y actualicé la lisat de paquetes disponibles para luego instalarlos:
+
+```bash
+sudo install -d /usr/share/postgresql-common/pgdg
+sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+  --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+
+sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+> /etc/apt/sources.list.d/pgdg.list'
+
+sudo apt update
+```
+
+Instalar PostgreSQL 18:
+
+```bash
+sudo apt install -y postgresql-18 postgresql-client-18
+```
+
+Luego de reiniciar el servicio compruebo que está habilitado y funcionando:
+
+![](capturas/Pasted%20image%2020260922125646.png)
+
+PostgreSQL utiliza clusters para poder instalar varias instancias SQL:
+
+![](capturas/Pasted%20image%2020260922130114.png)
+
+El resultado muestra un clúster con PostgreSQL v18
+
+### Ingresar al prompt por terminal
+
+Para verificar la version del servicio se puede ingresar al prompt directamente y verlo desde ahí pero para hacerlo necesito ingresar con el usuario que ha creado previamente PostgreSQL llamado `postgres`.
+
+```bash
+sudo -u postgres psql
+SELECT version();
+```
+
+![](capturas/Pasted%20image%2020260922130940.png)
+
+## PASO 4: 
