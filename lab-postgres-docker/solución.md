@@ -1,29 +1,130 @@
 # Solución
 
+## Arquitectura
+
+Para este laboratorio he montado **dos VM** en VirtualBox, las dos con Ubuntu 24.04 LTS y conectadas a la red local en modo puente:
+
+| VM              | Qué tiene instalado                                                | IP             |
+| --------------- | ------------------------------------------------------------------ | -------------- |
+| `vm-docker-app` | Linux Server + Docker + la app en Python (dentro de un contenedor) | `192.168.1.60` |
+| `vm-postgres`   | Linux Server + PostgreSQL 18 como servicio nativo                  | `192.168.1.61` |
+
+![](capturas/Pasted%20image%2020260922204657.png)
+
+En cada paso indico en qué VM se ejecuta cada comando.
+
 ## PASO 1: Configuraciones generales
 
 ### Instalar Ubuntu 24 y preparar el entorno
 
 > [!WARNING] Cambio de entorno
-> Al comienzo de este laboratorio cree VMs con Vagrant y boxes `bento/ubuntu-24.04`, pero, debido a problemas de compatibilidad al instalar PostgreSQL v-18, decidí rehacer las VMs con sus ISO oficiales de Ubuntu 24.x.
+> Al comienzo de este laboratorio creé las VM con Vagrant y la box `bento/ubuntu-24.04`, pero, debido a problemas de compatibilidad al instalar PostgreSQL 18, decidí rehacerlas en VirtualBox a partir de la ISO oficial de Ubuntu 24.x.
 
 ![](capturas/Pasted%20image%2020260921234441.png)
 
-Creación de dos VM con Ubuntu 24.04 LTS (el usuario de trabajo no root que voy a usar lo he creado durante la instalación, llamado `ciaoyaniz`). 
+Creé las dos VM con Ubuntu 24.04 LTS. El usuario de trabajo no root, `ciaoyaniz`, lo creé durante la propia instalación, y así evito trabajar con `root`.
 
-Además he habilitado los servicios SSH para poder conectarme de forma remota a ellas.
+Durante la instalación también activé el servidor **OpenSSH** para poder conectarme a las VM de forma remota desde mi PC.
 
-> **Red**: en modo Bridged (Adaptador Puente), la VM se comporta como una máquina más de la red local (192.168.1.0), para poder ver a la otra VM por IP.
+> **Red**: en modo puente (Bridged), cada VM se comporta como una máquina más de la red local (`192.168.1.0/24`) y tiene su propia IP dentro de la red. Así las dos VM se ven entre ellas y también desde mi PC.
+
+### Configurar IP fija en cada VM
+
+Por defecto cada VM recibe su IP por DHCP del router, y esa IP puede cambiar al reiniciar. Como la app y `pg_hba.conf` dependen de la IP de cada VM, les asigné una **IP fija** fuera del rango habitual del DHCP, a partir de la `.60`:
+
+| VM | IP fija |
+|---|---|
+| `vm-docker-app` | `192.168.1.60` |
+| `vm-postgres` | `192.168.1.61` |
+
+> Nota: en las primeras capturas `vm-docker-app` aparece con la IP `192.168.1.44`, que era la que le había dado el DHCP antes de fijarla.
+
+Primero consulto el nombre de la interfaz de red, la puerta de enlace y el archivo de configuración de red. Ubuntu Server gestiona la red con **Netplan**, que usa archivos YAML en `/etc/netplan/`:
+
+```bash
+ip a
+ip route | grep default
+ls /etc/netplan/
+```
+
+![](capturas/Pasted%20image%2020260922214103.png)
+
+En mi caso la interfaz es `enp0s3` y la puerta de enlace (el router) es `192.168.1.1`.
+
+Edito el archivo de Netplan (el nombre puede variar, por ejemplo `50-cloud-init.yaml`):
+
+```bash
+sudo nano /etc/netplan/50-cloud-init.yaml
+```
+
+Contenido en `vm-docker-app`:
+
+```yaml
+network:
+  version: 2
+  ethernets:
+    enp0s3:
+      dhcp4: false
+      addresses:
+        - 192.168.1.60/24     # Modifico esta línea para cada VM
+      routes:
+        - to: default
+          via: 192.168.1.1
+      nameservers:
+        addresses: [192.168.1.1, 8.8.8.8]
+```
+
+En `vm-postgres` es igual, cambiando la dirección por `192.168.1.61/24`.
+
+- `dhcp4: false`: desactiva la IP automática.
+- `addresses`: la IP fija con su máscara (`/24` = `255.255.255.0`).
+- `routes`: la puerta de enlace por defecto para salir a internet.
+- `nameservers`: servidores DNS (el router y el de Google como respaldo).
+
+> Nota: YAML es sensible a la sangría: hay que usar espacios, nunca tabuladores.
+
+%%Si el archivo lo genera `cloud-init`, hay que desactivar su gestión de red para que no sobrescriba mis cambios al reiniciar:
+
+```bash
+echo "network: {config: disabled}" | sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+```
+
+Ajusto los permisos del archivo (Netplan avisa si otros usuarios pueden leerlo) y aplico la configuración con `netplan try`, que la revierte sola a los 120 segundos si no confirmo con `Enter`. Así no pierdo el acceso si me equivoco:
+
+```bash
+sudo chmod 600 /etc/netplan/50-cloud-init.yaml
+sudo netplan try
+```
+
+![](capturas/Pasted%20image%2020260922220112.png)
+
+![](capturas/Pasted%20image%2020260922220157.png)
+
+%%
+> [!warning] Al aplicar la IP nueva se corta la conexión SSH
+> La sesión SSH estaba abierta con la IP antigua, así que se queda colgada. Para confirmar el cambio, lo hice desde la consola de VirtualBox, o volví a conectarme con la IP nueva.
+
+Compruebo la IP nueva, la salida a internet y que las dos VM se ven entre ellas:
+
+```bash
+ip a show enp0s3
+ping -c 3 8.8.8.8
+ping -c 3 192.168.1.61   # ejecuto desde desde vm-docker-app
+```
+
+![](capturas/Pasted%20image%2020260922220702.png)
 
 ### Actualización del sistema
 
-Inicié sesión desde mi host anfitrión mediante el servicio SSH con el comando `ssh ciaoyaniz@192.168.1.x`. Previamente obtuve la IP asignada a cada VM con el comando `ip a`. 
+Una vez dentro de cada VM, actualicé el sistema y reinicié para cargar el kernel nuevo:
 
-Una vez dentro de cada sistema, los actualicé:
 ```bash
 sudo apt update && sudo apt upgrade -y
 sudo reboot
 ```
+
+- `apt update`: descarga la lista actualizada de paquetes disponibles.
+- `apt upgrade -y`: instala las versiones nuevas de los paquetes ya instalados (`-y` responde "sí" a todo).
 
 ![](capturas/Pasted%20image%2020260921223035.png)
 
@@ -31,18 +132,33 @@ sudo reboot
 
 ### Asignar permisos `sudo` a mi usuario
 
-`usermod -aG sudo` agrega mi usuario al grupo `sudo`, habilitándome a ejecutar comandos administrativos con `sudo` sin ser `root`.
+`usermod -aG sudo` agrega mi usuario al grupo `sudo` y me permite ejecutar comandos administrativos con `sudo` sin iniciar sesión como `root`. La opción `-a` (append) es importante: sin ella, `-G` reemplazaría todos los grupos del usuario en vez de añadir uno.
 
-![](capturas/Pasted%20image%2020260921224242.png)
+```bash
+sudo usermod -aG sudo ciaoyaniz
+groups ciaoyaniz
+```
 
-El proceso lo he repetido en las dos VM.
+> Nota: en Ubuntu el primer usuario creado en la instalación ya pertenece al grupo `sudo`, así que este paso sirve sobre todo para comprobarlo. Con `groups` veo a qué grupos pertenece el usuario.
 
-## PASO 2: Configurar VM con Docker
+![](capturas/Pasted%20image%2020260922221018.png)
+
+Repetí el proceso en las dos VM.
+
+## PASO 2: Instalar Docker (en `vm-docker-app`)
+
 ### Instalar Docker
 
-He creado un script con ayuda de IA para poder instalar de forma rápida el servicio de Docker con sus dependencias y claves GPG ya que este es un paso crucial y no quería detenerme en ello.
+Para instalar Docker preparé un script con ayuda de IA. Antes de ejecutarlo lo revisé para entender qué hace cada bloque:
 
-Para crearlo y ejecutarlo utilice los comandos de edición, permisos de ejecución y al final ejecución del script:
+1. Borra configuraciones anteriores del repositorio de Docker, por si quedaba algo de un intento previo.
+2. Actualiza el sistema.
+3. Instala las dependencias necesarias (`curl`, `gnupg`, certificados…).
+4. Descarga la **clave GPG** oficial de Docker, que sirve para que `apt` compruebe que los paquetes vienen realmente de Docker, y agrega el repositorio oficial.
+5. Instala Docker Engine, el cliente, `containerd` y los plugins de `buildx` y `compose`.
+6. Agrega mi usuario al grupo `docker` y deja el servicio arrancado y habilitado al inicio.
+
+Para crearlo, darle permisos de ejecución y ejecutarlo:
 
 ```bash
 nano install-docker.sh
@@ -131,21 +247,40 @@ echo "Ejecuta: exit"
 echo "Luego reconéctate y prueba: docker run hello-world"
 ```
 
-![](capturas/Pasted%20image%2020260921234941.png)
-
-El proceso de instalación ha sido un poco lento pero el script ha funcionado correctamente:
+La instalación tardó un poco, pero el script funcionó correctamente:
 
 ![](capturas/Pasted%20image%2020260922124241.png)
 
-Levanté un contenedor de prueba para verificar:
+### Grupo `docker`
+
+El paquete `docker-ce` crea el grupo `docker` automáticamente, pero lo compruebo y lo creo si no existe. Después agrego mi usuario para poder usar Docker sin `sudo`:
+
+```bash
+getent group docker || sudo groupadd docker
+sudo usermod -aG docker $USER
+```
+
+Los grupos nuevos no se aplican a la sesión abierta, así que cerré la sesión SSH con `exit` y volví a conectarme. También se puede aplicar en la sesión actual con `newgrp docker`.
+
+![](capturas/Pasted%20image%2020260922221037.png)
+
+### Validar la instalación
+
+Levanté el contenedor de prueba `hello-world` **sin `sudo`**, lo que confirma que Docker funciona y que los permisos del grupo están bien:
+
+```bash
+docker run hello-world
+```
+
+Docker no encuentra la imagen en local, la descarga de Docker Hub, crea un contenedor, lo ejecuta y muestra el mensaje de bienvenida:
 
 ![](capturas/Pasted%20image%2020260922001758.png)
 
-## PASO 3: Configurar VM con PostgreSQL
+## PASO 3: Instalar PostgreSQL 18 (en `vm-postgres`)
 
 ### Instalar PostgreSQL sobre Ubuntu
 
-Primero agregué el repositorio oficial de PostgreSQL y actualicé la lisat de paquetes disponibles para luego instalarlos:
+Los repositorios de Ubuntu 24.04 traen PostgreSQL 16, así que para instalar la versión 18 primero agregué el repositorio oficial de PostgreSQL (PGDG) con su clave y actualicé la lista de paquetes:
 
 ```bash
 sudo install -d /usr/share/postgresql-common/pgdg
@@ -159,71 +294,78 @@ https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
 sudo apt update
 ```
 
-Instalar PostgreSQL 18:
+Instalo el servidor y el cliente de PostgreSQL 18:
 
 ```bash
 sudo apt install -y postgresql-18 postgresql-client-18
 ```
 
-Luego de reiniciar el servicio compruebo que está habilitado y funcionando:
+### Verificar que está corriendo como servicio
+
+La instalación registra PostgreSQL como servicio de `systemd`, así que arranca solo cada vez que se inicia la VM. Lo compruebo con:
+
+```bash
+sudo systemctl status postgresql
+```
 
 ![](capturas/Pasted%20image%2020260922125646.png)
 
-PostgreSQL utiliza clusters para poder instalar varias instancias SQL:
+> Nota: que aparezca `active (exited)` es normal. `postgresql.service` es solo un servicio "paraguas" que arranca los clusters; el proceso real del servidor es `postgresql@18-main`, que se puede ver con `sudo systemctl status postgresql@18-main`.
+
+En Ubuntu, PostgreSQL organiza sus instancias en **clusters**: cada cluster es una instancia independiente, con su versión, su puerto y su carpeta de datos. Esto permite tener varias versiones instaladas a la vez. Los listo con:
+
+```bash
+pg_lsclusters
+```
 
 ![](capturas/Pasted%20image%2020260922130114.png)
 
-El resultado muestra un clúster con PostgreSQL v18
+El resultado muestra un único cluster `main` con PostgreSQL 18, en estado `online` y escuchando en el puerto `5432`.
 
 ### Ingresar al prompt por terminal
 
-Para verificar la version del servicio se puede ingresar al prompt directamente y verlo desde ahí pero para hacerlo necesito ingresar con el usuario que ha creado previamente PostgreSQL llamado `postgres`.
+Durante la instalación PostgreSQL crea un usuario del sistema y de la base de datos llamado `postgres`, que es el administrador. Para entrar a la consola `psql` lo hago con ese usuario y compruebo la versión:
 
 ```bash
 sudo -u postgres psql
+```
+
+```sql
 SELECT version();
 ```
 
 ![](capturas/Pasted%20image%2020260922130940.png)
 
-## PASO 4: Crear base de datos
+## PASO 4: Crear base de datos, usuario y tabla (en `vm-postgres`)
 
-### Crear base de datos y usuario de servicio
+### Crear la base de datos
 
-Una vez dentro de la terminal creo la base de datos que va a servir como almacenamiento de mi app en Python
-
-Crear base de datos:
+Dentro de `psql` creo la base de datos que va a usar mi app en Python y la compruebo con `\l`, que lista las bases de datos:
 
 ```sql
 CREATE DATABASE labdb;
+\l
 ```
 
 ![](capturas/Pasted%20image%2020260922141646.png)
 
-La base de datos va a tener un usuario de servicio que va a mantener el servicio activo, conectarse y operar sobre la DDBB
+### Crear el usuario de la aplicación
+
+No quiero que la app se conecte con `postgres`, que es el administrador, así que creo un usuario propio para la aplicación, con los permisos justos para trabajar sobre `labdb`:
 
 ```sql
 CREATE USER labapp WITH PASSWORD 'labapp_26';
 GRANT ALL PRIVILEGES ON DATABASE labdb TO labapp;
 ```
 
-Los permisos de PostgreSQL se gestionan a nivel de base de datos y esquemas, por lo tanto hay que asignarle los permisos de esquema `public` que faltan al usuario. Dentro de la configuración de la DDBB:
+Los permisos de PostgreSQL funcionan por niveles: base de datos → esquema → tablas. El `GRANT` anterior solo da permisos a nivel de base de datos (conectarse, crear esquemas), así que también hay que darle permisos sobre el esquema `public`. Para eso me conecto a `labdb`:
 
-```SQL
+```sql
 \c labdb
 GRANT ALL ON SCHEMA public TO labapp;
 ```
-Una vez activado, el usuario puede conectarse y operar sobre la base de datos. 
 
-> Nota: `public` es una carpeta lógica dentro de una base de datos donde se guardan tablas, vistas, secuencias, etc. Por motivos de seguridad estos permisos han sido restringidos a partir de la version 15. 
-
-Dar permisos sobre tabla:
-```sql
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO labapp;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO labapp;
-```
-
-Estos permisos sirven para que mi user pueda leer datos que hayan creado otros usuario en la base de datos, no solo los que yo he ingresado.
+> Nota: un **esquema** es un espacio de nombres dentro de una base de datos donde se guardan las tablas, vistas, secuencias, etc. `public` es el esquema por defecto. Desde PostgreSQL 15, por seguridad, los usuarios normales ya no pueden crear objetos en `public` si no se les da permiso explícitamente.
 
 ### Crear una tabla de ejemplo
 
@@ -236,6 +378,12 @@ CREATE TABLE productos (
 );
 ```
 
+- `SERIAL PRIMARY KEY`: id numérico que se autoincrementa (usa una secuencia por detrás).
+- `NUMERIC(10, 2)`: número con 2 decimales, adecuado para precios.
+- `DEFAULT NOW()`: guarda automáticamente la fecha de creación de cada fila.
+
+Inserto algunos datos de prueba:
+
 ```sql
 INSERT INTO productos (nombre, precio) VALUES
     ('Teclado mecánico', 45.99),
@@ -246,22 +394,55 @@ INSERT INTO productos (nombre, precio) VALUES
 
 ![](capturas/Pasted%20image%2020260922150315.png)
 
-Confirmo que el puerto 5432 está escuchando. PostgreSQL recién instalado solo escucha en `localhost`, lo voy a cambiar más adelante:
+### Dar permisos sobre la tabla
+
+Como la tabla la creé con el usuario `postgres`, su dueño es `postgres` y `labapp` todavía no puede leerla. Le doy permisos sobre las tablas y secuencias del esquema **después** de haber creado la tabla:
+
+```sql
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO labapp;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO labapp;
+```
+
+> [!warning] El orden importa
+> `GRANT ... ON ALL TABLES` solo afecta a las tablas que **ya existen** en el momento de ejecutarlo. Si se ejecuta antes del `CREATE TABLE`, `labapp` no tendrá permisos sobre la tabla nueva y la app fallará con `permission denied for table productos`. Para que las tablas futuras también hereden los permisos se puede usar:
+> ```sql
+> ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO labapp;
+> ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO labapp;
+> ```
+
+Compruebo los permisos de la tabla con `\dp`:
+
+```sql
+\dp productos
+```
+
+![](capturas/Pasted%20image%2020260922223714.png)
+
+Esto quiere decir que `labapp` tiene todos los permisos y se los dio `postgres`. Salgo de `psql` con `\q`.
+
+### Comprobar el puerto de PostgreSQL
+
+Compruebo que PostgreSQL está escuchando en el puerto 5432:
+
+```bash
+sudo ss -tlnp | grep 5432
+```
 
 ![](capturas/Pasted%20image%2020260922202654.png)
 
-## PASO 5: Crear una aplicación en Python
+Por defecto, PostgreSQL recién instalado solo escucha en `127.0.0.1` (`localhost`), así que de momento solo acepta conexiones desde la propia `vm-postgres`. Lo cambio más adelante, cuando conecte la app.
+
+## PASO 5: Crear una aplicación en Python (en `vm-docker-app`)
+
+Antes de meter la app en Docker, la pruebo directamente sobre la VM. Así, si algo falla, sé si el problema está en el código o en Docker.
 
 ### Instalar Python
 
-Primero voy a probar la aplicación sin colocarla en Docker para asegurarme que funciona correctamente.
+Ubuntu 24.04 ya trae Python 3, pero hay que instalar también `pip` (gestor de paquetes) y `venv` (entornos virtuales):
 
-Instalo Python, aunque Ubuntu 24.x suele traerlo preinstalado:
 ```bash
 sudo apt update
-
 sudo apt install -y python3 python3-pip python3-venv
-sudo apt install python3-pip
 
 python3 --version
 pip3 --version
@@ -269,31 +450,40 @@ pip3 --version
 
 ### Crear un entorno virtual para el proyecto
 
-Primero creo la carpeta de trabajo:
+Creo la carpeta de trabajo:
+
 ```bash
 mkdir -p ~/lab-postgres-docker
 cd ~/lab-postgres-docker
 ```
 
-Luego activo un entorno de desarrollo seguro:
-```bash
-apt install python3.12-venv
+Creo y activo un **entorno virtual**. Sirve para aislar las dependencias de este proyecto del resto del sistema: todo lo que instale con `pip` queda dentro de la carpeta `venv`:
 
+```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
+Al activarlo, el prompt muestra `(venv)` al principio:
+
 ![](capturas/Pasted%20image%2020260922193428.png)
 
-Instalar y declarar las dependencias que necesita mi proyecto para luego usarlas en Docker:
+### Instalar las dependencias
+
+Instalo las librerías que necesita la app y guardo la lista exacta en `requirements.txt`, que después usaré para instalar lo mismo dentro de Docker:
+
 ```bash
 pip install flask psycopg2-binary python-dotenv
 pip freeze > requirements.txt
 ```
 
+- `psycopg2-binary`: el driver para conectarse a PostgreSQL desde Python.
+- `flask`: framework web mínimo para exponer el resultado en un endpoint HTTP.
+- `python-dotenv`: carga las variables del archivo `.env`, así no escribo las credenciales dentro del código.
+
 ### Crear archivo con variables de entorno
 
-El archivo `nano .env` va en la raíz del proyecto:
+Creo el archivo `.env` en la raíz del proyecto con `nano .env`:
 
 ```
 DB_HOST=localhost
@@ -305,9 +495,12 @@ PORT=3000
 ```
 
 ![](capturas/Pasted%20image%2020260922201025.png)
+
+> Nota: este archivo contiene la contraseña de la base de datos, por eso queda excluido del repositorio Git y de la imagen de Docker.
+
 ### Crear la app
 
-`nano app.py` en la raíz del proyecto:
+Creo `app.py` en la raíz del proyecto con `nano app.py`:
 
 ```python
 import os
@@ -383,9 +576,91 @@ if __name__ == "__main__":
 
 La aplicación hace las dos cosas que pide el enunciado del laboratorio: ejecuta un `SELECT` y muestra el resultado por consola al arrancar, y además lo expone en un endpoint HTTP simple (`GET /productos`) para poder verificarlo también desde un navegador o `curl`.
 
-Ejecuto la aplicación con  `python app.py`
+Ejecuto la aplicación:
 
+```bash
+python app.py
+```
 
-> [!warning] Al ejecutar la app me sale un error de conexion con la base de datos. Al parecer el puerto no se encuentra activo
+> [!warning] Al ejecutar la app aparece un error de conexión con la base de datos: `Connection refused` en el puerto 5432
 > ![](capturas/Pasted%20image%2020260922201349.png)
-> El error se corrige
+> El error se debe a que mi arquitectura tiene **dos VM**: la app corre en `vm-docker-app` y PostgreSQL en `vm-postgres`. Con `DB_HOST=localhost` la app busca PostgreSQL en su propia máquina (`127.0.0.1`), donde no hay nada escuchando en el puerto 5432. Además, PostgreSQL en `vm-postgres` solo escucha en `127.0.0.1` (lo vi antes con `ss -tlnp`), así que tampoco aceptaría conexiones que vengan de otra máquina. Hay que resolver las dos cosas.
+
+### Configurar PostgreSQL para aceptar conexiones remotas (en `vm-postgres`)
+
+Primero edito `postgresql.conf` para que PostgreSQL escuche en todas las interfaces de red y no solo en `localhost`:
+
+```bash
+sudo nano /etc/postgresql/18/main/postgresql.conf
+```
+
+Busco la línea `listen_addresses` (viene comentada por defecto) y la cambio a:
+
+```
+listen_addresses = '*'
+```
+
+![](capturas/Pasted%20image%2020260922224519.png)
+
+Escuchar en todas las interfaces no significa que cualquiera pueda entrar. El filtro real de quién se puede autenticar es `pg_hba.conf`:
+
+```bash
+sudo nano /etc/postgresql/18/main/pg_hba.conf
+```
+
+Al final del archivo agrego una línea que permite **solo** al usuario `labapp` conectarse **solo** a `labdb` y **solo** desde la IP de `vm-docker-app`:
+
+```
+# Permitir conexiones desde vm-docker-app (app y contenedores Docker)
+host    labdb    labapp    192.168.1.60/32    scram-sha-256
+```
+
+> Nota: uso `scram-sha-256` en vez de `md5` porque es el método de autenticación por defecto a partir de PostgreSQL 14, y en la versión 18 `md5` está marcado como obsoleto.
+
+![](capturas/Pasted%20image%2020260922224735.png)
+
+`listen_addresses` necesita un reinicio completo del servicio (no alcanza con `reload`):
+
+```bash
+sudo systemctl restart postgresql
+sudo systemctl status postgresql
+```
+
+Compruebo que ahora el puerto 5432 escucha en todas las interfaces (`0.0.0.0:5432`) y no solo en `127.0.0.1` como antes:
+
+```bash
+sudo ss -tlnp | grep 5432
+```
+
+![](capturas/Pasted%20image%2020260922224849.png)
+
+Reviso el firewall. Si `ufw` aparece como `inactive` no hace falta hacer nada; si está activo, abro el puerto solo para `vm-docker-app`:
+
+```bash
+sudo ufw status
+sudo ufw allow from 192.168.1.60 to any port 5432
+```
+
+![](capturas/Pasted%20image%2020260922224928.png)
+
+### Probar la conexión desde `vm-docker-app`
+
+Antes de volver a lanzar la app, compruebo que desde `vm-docker-app` llego al puerto de PostgreSQL de la otra VM (`192.168.1.61`, la IP fija de `vm-postgres`):
+
+```bash
+nc -zv 192.168.1.61 5432
+```
+
+![](capturas/Pasted%20image%2020260922225049.png)
+
+Cambio en el `.env` la variable `DB_HOST` para que apunte a la IP de `vm-postgres` en vez de a `localhost`:
+
+```
+DB_HOST=192.168.1.61
+```
+
+![](capturas/Pasted%20image%2020260922225308.png)
+
+Vuelvo a ejecutar la app con `python app.py` y ahora sí conecta y muestra la tabla de productos por consola:
+
+![](capturas/Pasted%20image%2020260922225353.png)
