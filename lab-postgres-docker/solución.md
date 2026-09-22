@@ -246,4 +246,7 @@ INSERT INTO productos (nombre, precio) VALUES
 
 ![](capturas/Pasted%20image%2020260922150315.png)
 
+==falta habilitar puertos???==
+
+## PASO 5: Crear una aplicacion en Python
 
