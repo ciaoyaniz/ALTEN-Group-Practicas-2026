@@ -186,4 +186,64 @@ SELECT version();
 
 ![](capturas/Pasted%20image%2020260922130940.png)
 
-## PASO 4: 
+## PASO 4: Crear base de datos
+
+### Crear base de datos y usuario de servicio
+
+Una vez dentro de la terminal creo la base de datos que va a servir como almacenamiento de mi app en Python
+
+Crear base de datos:
+
+```sql
+CREATE DATABASE labdb;
+```
+
+![](capturas/Pasted%20image%2020260922141646.png)
+
+La base de datos va a tener un usuario de servicio que va a mantener el servicio activo, conectarse y operar sobre la DDBB
+
+```sql
+CREATE USER labapp WITH PASSWORD 'labapp_26';
+GRANT ALL PRIVILEGES ON DATABASE labdb TO labapp;
+```
+
+Los permisos de PostgreSQL se gestionan a nivel de base de datos y esquemas, por lo tanto hay que asignarle los permisos de esquema `public` que faltan al usuario. Dentro de la configuración de la DDBB:
+
+```SQL
+\c labdb
+GRANT ALL ON SCHEMA public TO labapp;
+```
+Una vez activado, el usuario puede conectarse y operar sobre la base de datos. 
+
+> Nota: `public` es una carpeta lógica dentro de una base de datos donde se guardan tablas, vistas, secuencias, etc. Por motivos de seguridad estos permisos han sido restringidos a partir de la version 15. 
+
+Dar permisos sobre tabla:
+```sql
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO labapp;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO labapp;
+```
+
+Estos permisos sirven para que mi user pueda leer datos que hayan creado otros usuario en la base de datos, no solo los que yo he ingresado.
+
+### Crear una tabla de ejemplo
+
+```sql
+CREATE TABLE productos (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    precio NUMERIC(10, 2) NOT NULL,
+    creado_en TIMESTAMP DEFAULT NOW()
+);
+```
+
+```sql
+INSERT INTO productos (nombre, precio) VALUES
+    ('Teclado mecánico', 45.99),
+    ('Mouse inalámbrico', 19.50),
+    ('Monitor 24 pulgadas', 149.00),
+    ('Webcam HD', 32.75);
+```
+
+![](capturas/Pasted%20image%2020260922150315.png)
+
+
