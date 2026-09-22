@@ -246,7 +246,146 @@ INSERT INTO productos (nombre, precio) VALUES
 
 ![](capturas/Pasted%20image%2020260922150315.png)
 
-==falta habilitar puertos???==
+Confirmo que el puerto 5432 está escuchando. PostgreSQL recién instalado solo escucha en `localhost`, lo voy a cambiar más adelante:
 
-## PASO 5: Crear una aplicacion en Python
+![](capturas/Pasted%20image%2020260922202654.png)
 
+## PASO 5: Crear una aplicación en Python
+
+### Instalar Python
+
+Primero voy a probar la aplicación sin colocarla en Docker para asegurarme que funciona correctamente.
+
+Instalo Python, aunque Ubuntu 24.x suele traerlo preinstalado:
+```bash
+sudo apt update
+
+sudo apt install -y python3 python3-pip python3-venv
+sudo apt install python3-pip
+
+python3 --version
+pip3 --version
+```
+
+### Crear un entorno virtual para el proyecto
+
+Primero creo la carpeta de trabajo:
+```bash
+mkdir -p ~/lab-postgres-docker
+cd ~/lab-postgres-docker
+```
+
+Luego activo un entorno de desarrollo seguro:
+```bash
+apt install python3.12-venv
+
+python3 -m venv venv
+source venv/bin/activate
+```
+
+![](capturas/Pasted%20image%2020260922193428.png)
+
+Instalar y declarar las dependencias que necesita mi proyecto para luego usarlas en Docker:
+```bash
+pip install flask psycopg2-binary python-dotenv
+pip freeze > requirements.txt
+```
+
+### Crear archivo con variables de entorno
+
+El archivo `nano .env` va en la raíz del proyecto:
+
+```
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=labdb
+DB_USER=labapp
+DB_PASSWORD=labapp_26
+PORT=3000
+```
+
+![](capturas/Pasted%20image%2020260922201025.png)
+### Crear la app
+
+`nano app.py` en la raíz del proyecto:
+
+```python
+import os
+import sys
+
+from dotenv import load_dotenv
+from flask import Flask, jsonify
+import psycopg2
+import psycopg2.extras
+
+load_dotenv()
+
+app = Flask(__name__)
+
+DB_CONFIG = {
+    "host": os.getenv("DB_HOST"),
+    "port": os.getenv("DB_PORT"),
+    "dbname": os.getenv("DB_NAME"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+}
+
+
+def consultar_productos():
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT id, nombre, precio FROM productos ORDER BY id")
+            return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def imprimir_tabla(productos):
+    if not productos:
+        print("(sin filas)")
+        return
+    columnas = list(productos[0].keys())
+    anchos = {c: max(len(c), max(len(str(p[c])) for p in productos)) for c in columnas}
+    print(" | ".join(c.ljust(anchos[c]) for c in columnas))
+    print("-+-".join("-" * anchos[c] for c in columnas))
+    for p in productos:
+        print(" | ".join(str(p[c]).ljust(anchos[c]) for c in columnas))
+
+
+# Ejecuta el SELECT una vez al arrancar y lo muestra por consola
+try:
+    productos = consultar_productos()
+    print("Conexión a PostgreSQL exitosa. Productos encontrados:")
+    imprimir_tabla(productos)
+except Exception as error:
+    print(f"Error al conectar con PostgreSQL: {error}", file=sys.stderr)
+
+
+# Además, expone el mismo resultado como endpoint HTTP
+@app.get("/productos")
+def productos_endpoint():
+    try:
+        return jsonify(consultar_productos())
+    except Exception as error:
+        return jsonify({"error": str(error)}), 500
+
+
+@app.get("/")
+def index():
+    return "App conectada a PostgreSQL. Probá GET /productos"
+
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "3000"))
+    app.run(host="0.0.0.0", port=port)
+```
+
+La aplicación hace las dos cosas que pide el enunciado del laboratorio: ejecuta un `SELECT` y muestra el resultado por consola al arrancar, y además lo expone en un endpoint HTTP simple (`GET /productos`) para poder verificarlo también desde un navegador o `curl`.
+
+Ejecuto la aplicación con  `python app.py`
+
+
+> [!warning] Al ejecutar la app me sale un error de conexion con la base de datos. Al parecer el puerto no se encuentra activo
+> ![](capturas/Pasted%20image%2020260922201349.png)
+> El error se corrige
