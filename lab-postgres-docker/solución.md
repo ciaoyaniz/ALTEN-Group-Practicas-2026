@@ -4,21 +4,18 @@
 
 Para este laboratorio he montado **dos VM** en VirtualBox, las dos con Ubuntu 24.04 LTS y conectadas a la red local en modo puente:
 
-| VM              | Qué tiene instalado                                                | IP             |
+| VM              | Qué tendrá instalado                                               | IP             |
 | --------------- | ------------------------------------------------------------------ | -------------- |
 | `vm-docker-app` | Linux Server + Docker + la app en Python (dentro de un contenedor) | `192.168.1.60` |
 | `vm-postgres`   | Linux Server + PostgreSQL 18 como servicio nativo                  | `192.168.1.61` |
 
-![](capturas/Pasted%20image%2020260922204657.png)
+![](capturas/Pasted%20image%2020260923093221.png)
 
 En cada paso indico en qué VM se ejecuta cada comando.
 
 ## PASO 1: Configuraciones generales
 
 ### Instalar Ubuntu 24 y preparar el entorno
-
-> [!WARNING] Cambio de entorno
-> Al comienzo de este laboratorio creé las VM con Vagrant y la box `bento/ubuntu-24.04`, pero, debido a problemas de compatibilidad al instalar PostgreSQL 18, decidí rehacerlas en VirtualBox a partir de la ISO oficial de Ubuntu 24.x.
 
 ![](capturas/Pasted%20image%2020260921234441.png)
 
@@ -51,7 +48,7 @@ ls /etc/netplan/
 
 En mi caso la interfaz es `enp0s3` y la puerta de enlace (el router) es `192.168.1.1`.
 
-Edito el archivo de Netplan (el nombre puede variar, por ejemplo `50-cloud-init.yaml`):
+Edito el archivo de Netplan (el nombre puede variar, por ejemplo `00-cloud-init.yaml`):
 
 ```bash
 sudo nano /etc/netplan/50-cloud-init.yaml
