@@ -402,7 +402,7 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO labapp;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO labapp;
 ```
 
-> [!warning] El orden importa
+> [!warning] Cuidado con el orden de los permisos
 > `GRANT ... ON ALL TABLES` solo afecta a las tablas que **ya existen** en el momento de ejecutarlo. Si se ejecuta antes del `CREATE TABLE`, `labapp` no tendrá permisos sobre la tabla nueva y la app fallará con `permission denied for table productos`. Para que las tablas futuras también hereden los permisos se puede usar:
 > ```sql
 > ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO labapp;
@@ -633,7 +633,7 @@ sudo ss -tlnp | grep 5432
 
 ![](capturas/Pasted%20image%2020260922224849.png)
 
-Reviso el firewall. Si `ufw` aparece como `inactive` no hace falta hacer nada; si está activo, abro el puerto solo para `vm-docker-app`:
+Reviso el **firewall**. Si `ufw` aparece como `inactive` no hace falta hacer nada; si está activo, abro el puerto solo para `vm-docker-app`:
 
 ```bash
 sudo ufw status
@@ -663,3 +663,98 @@ DB_HOST=192.168.1.61
 Vuelvo a ejecutar la app con `python app.py` y ahora sí conecta y muestra la tabla de productos por consola:
 
 ![](capturas/Pasted%20image%2020260922225353.png)
+
+Desde otra terminal pruebo también el endpoint:
+
+```bash
+curl http://localhost:3000/productos
+```
+
+Detengo la app con `Ctrl+C` y desactivo el entorno virtual con `deactivate`, ya que a partir de ahora la app va a correr dentro de Docker.
+
+## PASO 6: Contenerizar la aplicación (en `vm-docker-app`)
+
+### Crear el `Dockerfile`
+
+Dentro de `~/lab-postgres-docker` creo el archivo `nano Dockerfile` (sin extensión):
+
+```dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app.py ./
+
+EXPOSE 3000
+
+CMD ["python", "app.py"]
+```
+
+- `FROM python:3.12-slim`: imagen base con Python 3.12 sobre Debian reducido, así la imagen final pesa poco. Esto lo obtengo desde Docker Hub
+- `WORKDIR /app`: carpeta de trabajo dentro del contenedor.
+- Copio primero `requirements.txt` e instalo las dependencias y **después** copio `app.py`. De esta forma Docker reutiliza la capa de dependencias en caché si solo cambio el código.
+- `EXPOSE 3000`: documenta el puerto de la app (publicarlo lo hace `docker run -p`).
+- `CMD`: el comando que se ejecuta al arrancar el contenedor.
+
+### Crear el `.dockerignore`
+
+Para que no se copien dentro de la imagen archivos innecesarios o sensibles, creo `nano .dockerignore`:
+
+```
+venv
+__pycache__
+*.pyc
+.env
+.git
+```
+
+> Nota: excluyo `venv` porque las dependencias se instalan dentro del contenedor con `pip install`, y `.env` porque las credenciales de la DDBB no deben quedar guardadas dentro de la imagen: se pasan como variables de entorno al ejecutar el contenedor.
+
+![](capturas/Pasted%20image%2020260923121222.png)
+
+### Construir la imagen
+
+```bash
+docker build -t lab-postgres-app .
+docker images | grep lab-postgres-app
+```
+
+![](capturas/Pasted%20image%2020260923122624.png)
+
+### Primer intento: el contenedor con `DB_HOST=localhost`
+
+Para entender cómo se comporta la red de Docker, primero lanzo el contenedor con `localhost` como host de la base de datos:
+
+```bash
+docker run -d --name lab-postgres-app -p 3000:3000 \
+  -e DB_HOST=192.168.1.61 \
+  -e DB_PORT=5432 \
+  -e DB_NAME=labdb \
+  -e DB_USER=labapp \
+  -e DB_PASSWORD=labapp_26 \
+  lab-postgres-app
+
+docker logs lab-postgres-app
+```
+
+- `-d`: ejecuta el contenedor en segundo plano para poder seguir usando la terminal.
+- `--name`: nombre del contenedor para usarlo con `docker logs`, `docker stop`, etc.
+- `-p 3000:3000`: publica el puerto 3000 del contenedor en el 3000 de la VM.
+- `-e`: variables de entorno que la app lee con `os.getenv`.
+
+> [!warning] El contenedor arranca pero no conecta: `Connection refused` en `127.0.0.1`
+> ![](capturas/Pasted%20image%2020260923122933.png)
+> Dentro de un contenedor, `localhost` es el propio contenedor, no la VM donde corre Docker. Cada contenedor tiene su propia red aislada, así que el `localhost` del contenedor y el de la VM son dos cosas distintas aunque estén en la misma máquina física.
+
+Elimino este intento antes de continuar y vuelvo a intentar corrigiendo `DB_HOST=192.168.1.61` :
+
+```bash
+docker stop lab-postgres-app
+docker rm lab-postgres-app
+```
+
+![](capturas/Pasted%20image%2020260923123257.png)
+
