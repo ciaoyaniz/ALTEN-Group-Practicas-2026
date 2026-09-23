@@ -78,26 +78,28 @@ En `vm-postgres` es igual, cambiando la dirección por `192.168.1.61/24`.
 - `routes`: la puerta de enlace por defecto para salir a internet.
 - `nameservers`: servidores DNS (el router y el de Google como respaldo).
 
-> Nota: YAML es sensible a la sangría: hay que usar espacios, nunca tabuladores.
-
-%%Si el archivo lo genera `cloud-init`, hay que desactivar su gestión de red para que no sobrescriba mis cambios al reiniciar:
-
-```bash
-echo "network: {config: disabled}" | sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
-```
-
-Ajusto los permisos del archivo (Netplan avisa si otros usuarios pueden leerlo) y aplico la configuración con `netplan try`, que la revierte sola a los 120 segundos si no confirmo con `Enter`. Así no pierdo el acceso si me equivoco:
-
-```bash
-sudo chmod 600 /etc/netplan/50-cloud-init.yaml
-sudo netplan try
-```
-
 ![](capturas/Pasted%20image%2020260922220112.png)
 
 ![](capturas/Pasted%20image%2020260922220157.png)
 
-%%
+> [!TIP] Opcional: Ajustar configuraciones de cloud-init
+> En muchos servidores (Ubuntu en la nube, máquinas virtuales, etc.), **cloud-init** configura automáticamente la red cada vez que arranca el sistema.
+> 
+> Si el archivo lo genera `cloud-init`, hay que desactivar su gestión de red para que no sobrescriba mis cambios al reiniciar:
+> 
+> ```bash
+> echo "network: {config: disabled}" | sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+> ```
+> 
+> Ajusto los permisos del archivo (solo `root`puede leer y escribir) y aplico la configuración con `netplan try`, que la revierte sola a los 120 segundos si no confirmo con `Enter`. Así no pierdo el acceso si me equivoco:
+> 
+> ```bash
+> sudo chmod 600 /etc/netplan/50-cloud-init.yaml
+> sudo netplan try
+> ```
+>
+>Netplan suele mostrar advertencias si sus archivos son legibles por otros usuarios porque pueden contener información sensible de red.
+
 > [!warning] Al aplicar la IP nueva se corta la conexión SSH
 > La sesión SSH estaba abierta con la IP antigua, así que se queda colgada. Para confirmar el cambio, lo hice desde la consola de VirtualBox, o volví a conectarme con la IP nueva.
 
