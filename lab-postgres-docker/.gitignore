@@ -1,6 +1,3 @@
-# Este repo sube SOLO documentacion: archivos .md y las capturas.
-# Todo lo demas (codigo, Vagrantfile, Dockerfile, .env, etc.) queda afuera.
-
 # Ignorar todo por defecto
 *
 
