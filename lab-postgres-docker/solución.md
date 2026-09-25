@@ -693,7 +693,7 @@ EXPOSE 3000
 CMD ["python", "app.py"]
 ```
 
-- `FROM python:3.12-slim`: imagen base con Python 3.12 sobre Debian reducido, así la imagen final pesa poco. Esto lo obtengo desde Docker Hub
+- `FROM python:3.12-slim`: imagen base con Python 3.12 sobre Debian reducido, así la imagen final pesa poco.
 - `WORKDIR /app`: carpeta de trabajo dentro del contenedor.
 - Copio primero `requirements.txt` e instalo las dependencias y **después** copio `app.py`. De esta forma Docker reutiliza la capa de dependencias en caché si solo cambio el código.
 - `EXPOSE 3000`: documenta el puerto de la app (publicarlo lo hace `docker run -p`).
@@ -791,7 +791,7 @@ Investigando encontré tres formas habituales de que un contenedor llegue a un s
 - **IP del bridge `docker0`** (normalmente `172.17.0.1`): la puerta de enlace de la red de contenedores, que también es la propia máquina donde corre Docker.
 - **`--network host`**: el contenedor comparte la red de la VM y pierde su aislamiento.
 
-Las tres sirven para llegar a un servicio **de la misma máquina donde corre Docker**. En mi caso PostgreSQL está en **otra VM** (`vm-postgres`), así que lo que necesito es usar directamente su IP de la red local. Los contenedores en la red `bridge` pueden salir a la red local sin configuración extra, porque Docker hace NAT: el tráfico sale del contenedor (`172.17.0.x`) y llega a `vm-postgres` con la IP de `vm-docker-app` (`192.168.1.60`). Por eso la línea que agregué antes en `pg_hba.conf` también sirve para el contenedor.
+Las tres sirven para llegar a un servicio **de la misma máquina donde corre Docker**. En mi caso PostgreSQL está en **otra VM** (`vm-postgres`), así que lo que necesito es usar directamente su IP de la red local. Los contenedores en la red `bridge` pueden salir a la red local sin configuración extra, porque ==**Docker hace NAT**==: el tráfico sale del contenedor (`172.17.0.x`) y llega a `vm-postgres` con la IP de `vm-docker-app` (`192.168.1.60`). Por eso la línea que agregué antes en `pg_hba.conf` también sirve para el contenedor.
 
 Puedo comprobar la subred que usa Docker con:
 
@@ -803,7 +803,93 @@ docker network inspect bridge | grep Subnet
 
 > Nota: si PostgreSQL estuviera instalado en la misma VM que Docker , habría que lanzar el contenedor con `--add-host=host.docker.internal:host-gateway` y `-e DB_HOST=host.docker.internal`, y en `pg_hba.conf` permitir la subred de Docker (`172.17.0.0/16`) en vez de la IP de la otra VM.
 
-## Conclusión
+---
+# Anexo
+
+## PASO 8: Mejorar la seguridad de las credenciales con `.env` (en `vm-docker-app`)
+
+En el PASO 6 lancé el contenedor pasando las credenciales una a una con `-e`, incluida la contraseña (`-e DB_PASSWORD=labapp_26`). Eso tiene un problema: la contraseña queda escrita en el historial de la terminal (`~/.bash_history`) y la ve cualquiera que mire la pantalla o el historial. En este paso centralizo todas las credenciales en el archivo `.env` y lo protejo.
+
+### Compruebo el historial de bash
+
+Compruebo que la contraseña quedó guardada en el historial:
+
+```bash
+cat ~/.bash_history
+```
+
+![](capturas/Pasted%20image%2020260925084054.png)
+
+Elimino el archivo:
+
+```bash
+rm ~/.bash_history
+```
+
+![](capturas/Pasted%20image%2020260925084247.png)
+
+### Proteger el archivo `.env`
+
+Dejo el `.env` con permisos para que solo mi usuario pueda leerlo y escribirlo:
+
+```bash
+cd ~/lab-postgres-docker
+chmod 600 .env
+ls -l .env    # -rw------- 1 ciaoyaniz ciaoyaniz ...
+```
+
+![](capturas/Pasted%20image%2020260925084402.png)
+
+Compruebo que el contenido es el correcto, con `DB_HOST` apuntando a `vm-postgres`:
+
+```
+DB_HOST=192.168.1.61
+DB_PORT=5432
+DB_NAME=labdb
+DB_USER=labapp
+DB_PASSWORD=labapp_26
+PORT=3000
+```
+
+### Excluir el `.env` de Git
+
+Creo `nano .gitignore` para que el `.env` nunca se suba al repositorio:
+
+```
+.env             # Variables de entorno
+venv/            # Entorno virtual de Python
+__pycache__/     # Python: almacena versiones de modulos
+*.pyc            # Compilados de Python
+```
+
+### Lanzar el contenedor con `--env-file`
+
+Elimino el contenedor anterior y lo vuelvo a lanzar cargando las variables desde el `.env`, sin escribir ninguna credencial en el comando:
+
+```bash
+docker stop lab-postgres-app
+docker rm lab-postgres-app
+
+docker run -d --name lab-postgres-app -p 3000:3000 \
+  --env-file .env \
+  lab-postgres-app
+
+docker ps
+docker logs lab-postgres-app
+```
+
+- `--env-file .env`: carga todas las variables del `.env` como variables de entorno del contenedor, que la app lee con `os.getenv`.
+- Si necesito cambiar una sola variable para una prueba, puedo añadir `-e`, por ejemplo `-e DB_HOST=localhost`. Si una variable está en `--env-file` y también en `-e`, gana la de `-e`.
+
+![](capturas/Pasted%20image%2020260925090712.png)
+
+Este error sale porque ejecuté PostgreSQL posteriormente a levantar el contenedor. Es un comportamiento normal. Compruebo que la conexión ala base de datos es estable 
+[http://192.168.1.60:3000/productos](http://192.168.1.60:3000/productos) desde el endpoint de mi equipo con Windows obteniendo un código 200. 
+
+> Nota: el `.env` sigue excluido de la imagen gracias al `.dockerignore`, así que las credenciales no quedan guardadas dentro de la imagen. Solo se pasan al contenedor en el momento de ejecutarlo.
+
+---
+# Conclusión
 
 Lo que más me costó entender fue que `localhost` no es siempre el mismo sitio: depende de dónde se ejecuta el proceso (mi VM, otra VM o un contenedor). También aprendí que en PostgreSQL abrir la red tiene dos capas: `listen_addresses` decide en qué interfaces escucha y `pg_hba.conf` decide quién puede autenticarse y desde dónde.
 
